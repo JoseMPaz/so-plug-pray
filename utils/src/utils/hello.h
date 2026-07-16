@@ -9,16 +9,20 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <netdb.h>
-#include <stdio.h>
 #include <commons/collections/list.h>
 #include <pthread.h>
 #include <commons/string.h>
 #include <signal.h>
 #include <semaphore.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
-#define TAMANO_STRING 20
-#define BASE_DIEZ 10
+
+
+#define wait(semaforo) sem_wait(semaforo)
+#define signal(semaforo) sem_post(semaforo)
+
+typedef void * (*t_scheduler)(void * arg);
 
 typedef enum
 {
@@ -26,28 +30,29 @@ typedef enum
 	SERVIDOR = 1
 }t_conexion;
 
-typedef struct
-{
-	uint8_t ax;
-	uint8_t bx;
-	uint8_t cx;
-	uint8_t dx;
-	uint32_t eax;
-	uint32_t ebx;
-	uint32_t ecx;
-	uint32_t edx;
-	uint32_t si;
-	uint32_t di;
-}t_reg_cpu;
-
 typedef enum
 {
 	NEW_IO = 0,
 	NEW_CPU = 1,
 	NEW_SWAP = 2,
 	NEW_MEMORY_STICK = 3,
-	INICIAR_PROCESO = 4,
+	NEW_KERNEL_SCHEDULER = 4,
 	
+	IO_SLEEP = 5,
+	IO_STDIN = 6,
+	IO_STDOUT = 7,
+
+	IO_FINISHED = 8,
+	EXECUTE_PROCESS = 9,
+
+	//CPU <-> MEMORY
+	MOV_IN = 10,
+	MOV_OUT = 11,
+	RES_OK = 12,
+	//SCHEDULER <-> MEMORY 
+	ESPACIO_LIBRE = 13,
+	R_ESPACIO = 14,
+
 	OPERACION_DESCONOCIDA = 50
 	/* 
 	...
@@ -65,9 +70,41 @@ typedef struct
 
 typedef struct
 {
-	char * identificador;
-	int socket;
-}t_pcb;
+	// Registros de 8 bits
+	uint8_t ax;
+	uint8_t bx;
+	uint8_t cx;
+	uint8_t dx;
+
+	// Registros de 32 bits
+	uint32_t eax;
+	uint32_t ebx;
+	uint32_t ecx;
+	uint32_t edx;
+
+	// Registros de direcciones lógicas
+	uint32_t si;
+	uint32_t di;
+
+}t_registros_cpu;
+
+typedef enum
+{
+	NEW,
+	READY,
+	EXEC,
+	BLOCK,
+	EXIT
+}t_estado_proceso;
+
+typedef struct
+{
+	uint32_t pid;// Identificador único del proceso
+	uint32_t prioridad;// Prioridad del proceso
+	uint32_t pc;// Program Counter: próxima instrucción a ejecutar
+	t_estado_proceso estado;// Estado actual del proceso
+	t_registros_cpu contexto;// Contexto de ejecución del proceso
+} t_pcb;
 
 typedef struct
 {
@@ -98,4 +135,5 @@ void destruir_paquete (t_paquete * paquete);
 void agregar_a_paquete (t_paquete * paquete, void * cadena, int longitud);
 void enviar_paquete (t_paquete * paquete, int socket);
 void * serializar_paquete (t_paquete * paquete, int bytes_a_enviar);
+char * pasar_a_minusculas(char* str);
 #endif

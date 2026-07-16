@@ -3,8 +3,11 @@
 
 #include <utils/hello.h>
 
-extern t_list * recursos_cpu;
+#define ARCHIVO_CONFIGURACION 1
+#define TAMANO_STICK 2
 
+extern t_list * recursos_cpu;
+extern char * memory_stick;
 extern t_log * logger;
 
 void * admitir_clientes (void * socket_escucha);

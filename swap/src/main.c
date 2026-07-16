@@ -27,7 +27,30 @@ int main(int argc, char* argv[])
 	agregar_a_paquete (paquete, "HHDD", strlen("HHDD"));
 	enviar_paquete (paquete, socket_kernel_memory);
 	
-	getchar ();
+	// Loop principal de SWAP - esperar operaciones
+	while(1) {
+		t_operacion operacion = recibir_operacion(socket_kernel_memory);
+
+		switch(operacion) {
+			case MOV_OUT: // Lectura desde SWAP (escritura de datos a SWAP)
+				// Recibir bloque a escribir
+				t_list* params_write = recibir_carga_util(socket_kernel_memory);
+				log_info(logger, "SWAP: Operación de escritura recibida");
+				list_destroy(params_write);
+				break;
+			
+			case MOV_IN: // Escritura a SWAP (lectura de datos desde SWAP)
+				// Recibir bloque a leer
+				t_list* params_read = recibir_carga_util(socket_kernel_memory);
+				log_info(logger, "SWAP: Operación de lectura recibida");
+				list_destroy(params_read);
+				break;
+			
+			default:
+				log_warning(logger, "SWAP: Operación desconocida recibida: %d", operacion);
+				break;
+		}
+	}
 
 	return 0;
 }

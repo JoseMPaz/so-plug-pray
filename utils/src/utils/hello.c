@@ -10,7 +10,7 @@ t_config * iniciar_config (char * ruta_archivo)
 
 	if ( (nuevo_config = config_create(ruta_archivo) ) == NULL)
 	{
-		fprintf(stderr, "No se pudo leer el config \n");
+		printf("No se pudo leer el config \n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -23,7 +23,7 @@ t_log * iniciar_log (char * archivo_log, char * etiqueta_log, t_log_level level)
 	
 	if (nuevo_log == NULL)
 	{
-		fprintf (stderr, "%s", "No se pudo leer el log");
+		log_error (nuevo_log, "%s", "No se pudo leer el log");
 		exit (EXIT_FAILURE);
 	}
 		
@@ -218,4 +218,14 @@ void * serializar_paquete (t_paquete * paquete, int bytes_a_enviar)
 	//desplazamiento += paquete->carga_util->longitud; //No se usa
 
 	return mensaje_serializado;
+}
+
+char * pasar_a_minusculas(char* str)
+{
+	char * minusculas = str;
+	for(int i = 0; str[i] != '\0'; i++)
+	{
+		minusculas[i] = tolower(str[i]);
+	}
+	return minusculas;
 }
