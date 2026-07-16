@@ -10,7 +10,7 @@ t_config * iniciar_config (char * ruta_archivo)
 
 	if ( (nuevo_config = config_create(ruta_archivo) ) == NULL)
 	{
-		printf("No se pudo leer el config \n");
+		fprintf(stderr, "No se pudo leer el config \n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -23,7 +23,7 @@ t_log * iniciar_log (char * archivo_log, char * etiqueta_log, t_log_level level)
 	
 	if (nuevo_log == NULL)
 	{
-		log_error (nuevo_log, "%s", "No se pudo leer el log");
+		fprintf (stderr, "%s", "No se pudo leer el log");
 		exit (EXIT_FAILURE);
 	}
 		

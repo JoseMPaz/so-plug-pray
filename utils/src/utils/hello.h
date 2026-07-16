@@ -17,7 +17,8 @@
 #include <semaphore.h>
 #include <arpa/inet.h>
 
-
+#define TAMANO_STRING 20
+#define BASE_DIEZ 10
 
 typedef enum
 {
@@ -25,13 +26,27 @@ typedef enum
 	SERVIDOR = 1
 }t_conexion;
 
+typedef struct
+{
+	uint8_t ax;
+	uint8_t bx;
+	uint8_t cx;
+	uint8_t dx;
+	uint32_t eax;
+	uint32_t ebx;
+	uint32_t ecx;
+	uint32_t edx;
+	uint32_t si;
+	uint32_t di;
+}t_reg_cpu;
+
 typedef enum
 {
 	NEW_IO = 0,
 	NEW_CPU = 1,
 	NEW_SWAP = 2,
 	NEW_MEMORY_STICK = 3,
-	NEW_KERNEL_SCHEDULER = 4,
+	INICIAR_PROCESO = 4,
 	
 	OPERACION_DESCONOCIDA = 50
 	/* 

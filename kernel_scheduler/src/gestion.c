@@ -19,11 +19,20 @@ void * admitir_clientes (void * socket_escucha)
     		
    		*socket_de_atencion = socket_temporal;
     		
-   		pthread_create (&hilo_de_atencion, NULL, admitir, (void *) socket_de_atencion);
-   		pthread_detach (hilo_de_atencion);
+			if(pthread_create(&hilo_de_atencion, NULL, admitir, socket_de_atencion) != 0)
+			{
+				perror("pthread_create");
+
+				close(*socket_de_atencion);
+				free(socket_de_atencion);
+			}
+			else
+			{
+				pthread_detach(hilo_de_atencion);
+			}
    	}   	
   }
-  pthread_exit(NULL);
+
 
 	return NULL;
 
@@ -53,9 +62,10 @@ void * admitir (void * socket_de_atencion)
 			recurso->id = strdup ( id );
 			recurso->socket = socket;
 			recurso->disponible = true;
-			
-			
-			list_add ( recursos_io , (void *) recurso );//Se le debe agregar mutex
+						
+			pthread_mutex_lock(&mutex_recursos_io);
+				list_add (recursos_io, recurso);
+			pthread_mutex_unlock(&mutex_recursos_io);
 			
 			log_info ( logger, "NUEVO IO CONECTADO A KERNEL_SCHEDULER");
 			list_destroy_and_destroy_elements (parametros_new_io, free);
@@ -66,6 +76,12 @@ void * admitir (void * socket_de_atencion)
 			if (parametros_new_cpu == NULL || list_size(parametros_new_cpu) == 0) 
 			{
     		log_error(logger, "Error: parametros_new_cpu inválido");
+
+    		if(parametros_new_cpu != NULL)
+					list_destroy_and_destroy_elements(parametros_new_cpu, free);
+
+				close(socket);
+
     		return NULL;
 			}
 			recurso = (t_recurso *) malloc (sizeof(t_recurso));
@@ -75,10 +91,12 @@ void * admitir (void * socket_de_atencion)
 			recurso->socket = socket;
 			recurso->disponible = true;
 			
-			list_add ( recursos_cpu, (void *) recurso );//Se le debe agregar mutex
+			pthread_mutex_lock(&mutex_recursos_cpu);
+				list_add (recursos_cpu, recurso);
+			pthread_mutex_unlock(&mutex_recursos_cpu);
 			
 			log_info ( logger, "NUEVO CPU CONECTADO A KERNEL_SCHEDULER");
-			list_destroy(parametros_new_cpu);
+			list_destroy_and_destroy_elements(parametros_new_cpu, free);
 			break;
 		case OPERACION_DESCONOCIDA:
 			fprintf (stderr, "Operación no registrada");
