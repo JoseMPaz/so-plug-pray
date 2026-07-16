@@ -1,0 +1,3 @@
+NOOP
+INIT_PROC hijo 1
+EXIT

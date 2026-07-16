@@ -4,7 +4,7 @@ void * admitir_clientes (void * socket_escucha)
 {
 	int socket_temporal;
 	int socket = *(int*) socket_escucha;
-	free (socket_escucha);  // liberar memoria
+	free(socket_escucha);  // liberar memoria
 	
 	while(true)
 	{
@@ -29,14 +29,12 @@ void * admitir_clientes (void * socket_escucha)
 
 }
 
+
 void * admitir (void * socket_de_atencion)
 {
 	char * id;
 	int socket = *(int*) socket_de_atencion;
 	t_recurso * recurso;
-	char ruta_pseudocodigo[100] = "";
-	
-	
 	free (socket_de_atencion);  // liberar memoria
 	printf ("%d\n", socket);//sera eliminado
 
@@ -48,7 +46,7 @@ void * admitir (void * socket_de_atencion)
     
 	switch (operacion) //Selecciona el tipo de operacion
   {
-		case NEW_SWAP: //Se encolar el socket swap en la lista de swaps
+		case NEW_SWAP: //Se encolar el socket io en la lista de ios
 			if (recurso_swap == NULL)
 			{
 				recurso_swap = (int *) malloc (sizeof(int));
@@ -61,45 +59,19 @@ void * admitir (void * socket_de_atencion)
 				close (socket);
 			}
 			break;
-		case INICIAR_PROCESO: //Se encolar el socket kernel_scheduler en la lista de kernel_scheduler
-			t_list * parametros_iniciar_proceso = recibir_carga_util (socket);
-			char * nombre_archivo = strdup ( list_get(parametros_iniciar_proceso, 0) ); 
-			uint32_t pid = strtol ( list_get(parametros_iniciar_proceso, 1) , NULL, BASE_DIEZ);
-			/************************* LOG 04 Obligatorio ***********************/
-			log_info ( logger, "## PID: %d - Proceso Creado", pid);
-			
-			strcpy (ruta_pseudocodigo, config_get_string_value (config, "SCRIPTS_BASEPATH") );
-			strcat (ruta_pseudocodigo, "/");
-			strcat (ruta_pseudocodigo, nombre_archivo);
-			
-			printf ("Ruta del archivo de pseudocodigo: ");
-			puts (ruta_pseudocodigo);
-			
-			//FILE * ptr_file = fopen (ruta_pseudocodigo, "r");
-			
-		
-			
-			//cargar_instrucciones (pid, ptr_file);
-			
-			//imprimir_pid_instrucciones ();
-			
-			
-			
-			
-			free (nombre_archivo);
-			//list_destroy_and_destroy_elements (parametros_iniciar_proceso, free);
-		/*
+		case NEW_KERNEL_SCHEDULER: //Se encolar el socket io en la lista de ios
 			if (recurso_kernel_scheduler == NULL)
 			{
 				recurso_kernel_scheduler = (int *) malloc (sizeof(int));
 				*recurso_kernel_scheduler = socket;
 				log_info ( logger, "NUEVO KERNEL_SCHEDULER CONECTADO A KERNEL_MEMORY");
+				atender_kernel_scheduler(socket);
 			}
 			else
 			{
 				log_info ( logger, "UN KERNEL_SCHEDULER INTENTO CONECTARSE A KERNEL_MEMORY");
 				close (socket);
-			}*/
+			}
 			break;
 		case NEW_MEMORY_STICK://Se encolar el socket cpu en la lista de cpus
 			parametros_new_memory_stick = recibir_carga_util (socket); //Recibe identificador de cpu
@@ -140,6 +112,8 @@ void * admitir (void * socket_de_atencion)
 			
 			log_info ( logger, "NUEVO CPU CONECTADO A KERNEL_MEMORY");
 			list_destroy(parametros_new_cpu);
+
+			atender_cpu(socket);
 			break;
 		case OPERACION_DESCONOCIDA:
 			fprintf (stderr, "Operación no registrada");
@@ -150,73 +124,137 @@ void * admitir (void * socket_de_atencion)
 	return NULL;
 }
 
-void cargar_instrucciones (uint32_t pid, FILE * ptr_file)
-{
-	if(ptr_file == NULL)
-  {
-		fprintf (stderr, "%s\n", "Error: No existe el archivo de pseudocodigos");
-		return;
+t_list* parsear_instrucciones(char* path_archivo){
+	t_list* lista_instrucciones = list_create();
+
+	FILE* archivo = fopen(path_archivo,"r");
+
+	if(archivo == NULL){
+		printf("Error: No se pudo abrir el archivo %s\n", path_archivo);
 	}
-	t_pid_instrucciones * nuevo = malloc (sizeof(t_pid_instrucciones));
 
-	nuevo->pid = pid;
-	nuevo->instrucciones = list_create();
+	char buffer_linea[100];
 
-	char buffer[256];
+	while (fgets(buffer_linea, sizeof(buffer_linea),archivo)!= NULL){
+		char* instruccion = string_duplicate(buffer_linea);
+		string_trim(&instruccion);
+		if(string_length(buffer_linea) > 0){
+			list_add(lista_instrucciones, instruccion);
+		} else{
+			free(instruccion);
+		}
+	}
+ fclose(archivo);
+ return lista_instrucciones;
 
-	while(fgets(buffer, sizeof(buffer), ptr_file) != NULL)
-	{
-    size_t len = strlen(buffer);
-
-    if(len > 0 && buffer[len - 1] == '\n')
-    {
-        buffer[len - 1] = '\0';
-    }
-
-    char * instruccion = strdup(buffer);
-
-		list_add(nuevo->instrucciones, instruccion);
-}	
-
-	list_add(pid_instrucciones, nuevo);
 }
 
-void destruir_instruccion(void * elem)
+void atender_kernel_scheduler (int socket)
 {
-	free(elem);
+	int operacion;
+	t_list * parametros = NULL;
+	t_paquete * paquete_memoria = NULL;
+
+	while(true) //loop infinito para que se quede escuchando mensajes del cpu
+		{
+			operacion = recibir_operacion(socket); //recien se iguala operacion aca porque cpu puede mandar muchas operaciones, y si estaria afuera, procesaria siempre la misma
+			switch(operacion)
+			{
+				case EXECUTE_PROCESS: { // Recibir instrucciones del proceso
+					parametros = recibir_carga_util(socket);
+					if (parametros != NULL && list_size(parametros) > 0) {
+						// Primera posición es el nombre del archivo (para log)
+						char* nombre_archivo = (char*) list_get(parametros, 0);
+						log_info(logger, "KERNEL_MEMORY: Instrucciones recibidas del archivo %s", nombre_archivo);
+						
+						pthread_mutex_lock(&mutex_instrucciones);
+						// Almacenar todas las instrucciones (índices 1 en adelante)
+						for (int i = 1; i < list_size(parametros); i++) {
+							char* instr = string_duplicate((char*) list_get(parametros, i));
+							list_add(instrucciones_proceso, instr);
+						}
+						pthread_mutex_unlock(&mutex_instrucciones);
+						
+						log_info(logger, "KERNEL_MEMORY: Se almacenaron %d instrucciones", list_size(instrucciones_proceso));
+					}
+					list_destroy_and_destroy_elements(parametros, free);
+					break;
+				}
+				case ESPACIO_LIBRE:
+					parametros = recibir_carga_util(socket); // este y el list_destroy de abajo sonpara que en el proximo recibir_operacion no lea basura
+					log_info(logger, "Pedido de espacio libre del scheduler");
+					paquete_memoria = crear_paquete(R_ESPACIO);
+
+					int espacio_libre = 1024; //MOCK
+					agregar_a_paquete(paquete_memoria, &espacio_libre, sizeof(int));
+					enviar_paquete(paquete_memoria, socket);
+					destruir_paquete(paquete_memoria);
+					list_destroy(parametros);
+					break;
+				default:
+					close (socket);
+					return;
+			}
+		}
 }
 
-void destruir_pid_instrucciones(t_pid_instrucciones * proceso)
+void atender_cpu (int socket) //Devolver instrucciones y simular memoria
 {
-	list_destroy_and_destroy_elements(
-		proceso->instrucciones,
-		destruir_instruccion
-	);
+	int operacion;
+	t_list * parametros = NULL;
+	t_paquete * paquete_ok = NULL;
 
-	free(proceso);
+	while(true) //loop infinito para que se quede escuchando mensajes del cpu
+		{
+			operacion = recibir_operacion(socket); //recien se iguala operacion aca porque cpu puede mandar muchas operaciones, y si estaria afuera, procesaria siempre la misma
+			switch(operacion)
+			{
+				case MOV_IN: { // Lectura: devolver instrucción o dato
+					parametros = recibir_carga_util(socket);
+					if (parametros != NULL && list_size(parametros) >= 2) {
+						char* pid_str = (char*) list_get(parametros, 0);
+						char* pc_str = (char*) list_get(parametros, 1);
+						int pc = atoi(pc_str);
+						
+						paquete_ok = crear_paquete(RES_OK);
+						
+						// Si PC corresponde a una instrucción, devolverla
+						pthread_mutex_lock(&mutex_instrucciones);
+						if (pc >= 0 && pc < list_size(instrucciones_proceso)) {
+							char* instruccion = (char*) list_get(instrucciones_proceso, pc);
+							log_info(logger, "KERNEL_MEMORY: MOV_IN PID=%s PC=%d Instruccion=%s", pid_str, pc, instruccion);
+							agregar_a_paquete(paquete_ok, instruccion, strlen(instruccion) + 1);
+						} else {
+							// Instrucción fuera de rango o dato en memoria
+							char* respuesta = "EMPTY";
+							agregar_a_paquete(paquete_ok, respuesta, strlen(respuesta) + 1);
+						}
+						pthread_mutex_unlock(&mutex_instrucciones);
+						
+						enviar_paquete(paquete_ok, socket);
+						destruir_paquete(paquete_ok);
+					}
+					list_destroy_and_destroy_elements(parametros, free);
+					break;
+				}
+				case MOV_OUT: { // Escritura: simular almacenamiento
+					parametros = recibir_carga_util(socket);
+					if (parametros != NULL && list_size(parametros) >= 2) {
+						char* pid_str = (char*) list_get(parametros, 0);
+						log_info(logger, "KERNEL_MEMORY: MOV_OUT PID=%s", pid_str);
+					}
+					paquete_ok = crear_paquete(RES_OK);
+					agregar_a_paquete(paquete_ok, "OK", strlen("OK") + 1);
+					enviar_paquete(paquete_ok, socket);
+					destruir_paquete(paquete_ok);
+					list_destroy_and_destroy_elements(parametros, free);
+					break;
+				}
+				default:
+					close (socket);
+					return;
+			}
+		}
 }
 
-void imprimir_instruccion (void * instr)
-{
-	char * instruccion = (char *) instr;
-	printf("   - %s\n", instruccion);
-	return;
-}
-        
-void imprimir_proceso(void * elemento)
-{
-	t_pid_instrucciones * proceso = (t_pid_instrucciones *) elemento;
 
-	printf("PID: %u\n", proceso->pid);
-
-	list_iterate(proceso->instrucciones, imprimir_instruccion);
-
-	printf("\n");
-	return;
-}
-    
-void imprimir_pid_instrucciones (void)
-{
-    list_iterate(pid_instrucciones, imprimir_proceso);
-    return;
-}
