@@ -229,3 +229,23 @@ char * pasar_a_minusculas(char* str)
 	}
 	return minusculas;
 }
+
+char *uint32_to_string (uint32_t numero)
+{
+    // Obtener la cantidad de caracteres necesarios (sin contar '\0')
+    int longitud = snprintf(NULL, 0, "%u", numero);
+
+    if (longitud < 0)
+        return NULL;
+
+    // Reservar memoria para el número y el terminador '\0'
+    char * cadena = (char *) malloc ((size_t)longitud + 1);
+
+    if (cadena == NULL)
+        return NULL;
+
+    // Escribir el número en la cadena
+    snprintf(cadena, (size_t)longitud + 1, "%u", numero);
+
+    return cadena;
+}

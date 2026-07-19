@@ -29,19 +29,18 @@ void * admitir_clientes (void * socket_escucha)
 
 }
 
-
 void * admitir (void * socket_de_atencion)
 {
 	char * id;
 	int socket = *(int*) socket_de_atencion;
 	t_recurso * recurso;
 	free (socket_de_atencion);  // liberar memoria
-	printf ("%d\n", socket);//sera eliminado
-
+	t_list * parametros_new_kernel_scheduler = NULL;
 	t_list * parametros_new_memory_stick = NULL;
 	t_list * parametros_new_cpu = NULL;
+	char ruta_absoluta_instrucciones[150];
 
-	int operacion = recibir_operacion(socket);
+	int operacion = recibir_operacion (socket);
 
     
 	switch (operacion) //Selecciona el tipo de operacion
@@ -59,19 +58,25 @@ void * admitir (void * socket_de_atencion)
 				close (socket);
 			}
 			break;
-		case NEW_KERNEL_SCHEDULER: //Se encolar el socket io en la lista de ios
-			if (recurso_kernel_scheduler == NULL)
-			{
-				recurso_kernel_scheduler = (int *) malloc (sizeof(int));
-				*recurso_kernel_scheduler = socket;
-				log_info ( logger, "NUEVO KERNEL_SCHEDULER CONECTADO A KERNEL_MEMORY");
-				atender_kernel_scheduler(socket);
-			}
-			else
-			{
-				log_info ( logger, "UN KERNEL_SCHEDULER INTENTO CONECTARSE A KERNEL_MEMORY");
-				close (socket);
-			}
+		case NEW_KERNEL_SCHEDULER: //Se debe obtener como operando el PID del proceso padre
+				*socket_kernel_scheduler = socket;
+				log_info ( logger, "## Nueva conexion: kernel Scheduler");
+				parametros_new_kernel_scheduler = recibir_carga_util (socket);
+				char * str_pid = (char *) list_get (parametros_new_kernel_scheduler, 0);
+				list_destroy (parametros_new_kernel_scheduler);
+				printf ("Cantidad de argumentos: %d\n", list_size (parametros_new_kernel_scheduler));
+				printf ("Kernel scheduler envio pid: %s\n", str_pid);
+				/*strcpy (ruta_absoluta_intrucciones, scripts_basepath);
+				strcat (ruta_absoluta_intrucciones, "/");
+				strcat (ruta_absoluta_intrucciones, (char *) list_get (parametros_new_kernel_scheduler, 1));*/
+				//printf ("%s\n", (char *) list_get (parametros_new_kernel_scheduler, 1));
+				//Creo la imagen a ese pid
+				//Aviso que fue creado y cierro el socket
+				t_paquete * paquete = crear_paquete (RESPUESTA_IMAGEN_PROCESO);
+				agregar_a_paquete (paquete, "OK", strlen ("OK") + 1);
+				enviar_paquete (paquete, socket);
+				//atender_kernel_scheduler (*socket_kernel_scheduler);
+				
 			break;
 		case NEW_MEMORY_STICK://Se encolar el socket cpu en la lista de cpus
 			parametros_new_memory_stick = recibir_carga_util (socket); //Recibe identificador de cpu
@@ -124,7 +129,8 @@ void * admitir (void * socket_de_atencion)
 	return NULL;
 }
 
-t_list* parsear_instrucciones(char* path_archivo){
+t_list* parsear_instrucciones(char* path_archivo)
+{
 	t_list* lista_instrucciones = list_create();
 
 	FILE* archivo = fopen(path_archivo,"r");
@@ -156,8 +162,8 @@ void atender_kernel_scheduler (int socket)
 	t_paquete * paquete_memoria = NULL;
 
 	while(true) //loop infinito para que se quede escuchando mensajes del cpu
-		{
-			operacion = recibir_operacion(socket); //recien se iguala operacion aca porque cpu puede mandar muchas operaciones, y si estaria afuera, procesaria siempre la misma
+	{
+		operacion = recibir_operacion(socket); //recien se iguala operacion aca porque cpu puede mandar muchas operaciones, y si estaria afuera, procesaria siempre la misma
 			switch(operacion)
 			{
 				case EXECUTE_PROCESS: { // Recibir instrucciones del proceso

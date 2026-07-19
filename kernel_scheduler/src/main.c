@@ -39,48 +39,42 @@ uint32_t pid = 0;
 t_list * instrucciones_padre = NULL;
 
 // Variables para Round Robin
-int rr_quantum = 0;
+
 pthread_mutex_t mutex_quantum;
 
 sem_t sem_ready;
 sem_t sem_new;
 sem_t sem_new_ready;
-int * recurso_kernel_memory = NULL;
+int * socket_kernel_memory = NULL;
 
+
+/*Variables de config*/
+char * log_level;
+char * algoritmo_de_planificacion;
+char ** algoritmos_de_las_colas = NULL; //Vector de strings
+int rr_quantum;
+bool queue_preemption;
+long suspension_timeout;
+char * puerto_escucha;
+char * ip_kernel_memory;
+char * puerto_kernel_memory;
+
+t_scheduler short_term_scheduler;//t_scheduler esta definido en hello.h
+
+void validar_cla (int argc, char * argv[]);
+void obtener_config (void);
+void establecer_planificador_corto_plazo (char * algoritmo);
 
 int main(int argc, char* argv[]) 
 {
 	int * socket_escucha = (int *) malloc (sizeof(int));
-	char * log_level;
-	char  * algoritmo_de_planificacion;
-	char * puerto_escucha;
-	char * puerto_kernel_memory, * ip_kernel_memory;
 	pthread_t hilo_servidor;
-	t_scheduler short_term_scheduler;//t_scheduler esta definido en hello.h
-	int pid_padre;
+
+	int pid_proceso_principal;
 	pthread_t hilo_planificador_corto_plazo;
 	pthread_t hilo_planificador_largo_plazo;
 	
-	if (argc != 1/*Por el ejecutable*/ + 2/*Por argumentos en linea de comando*/)
-	{
-		fprintf (	stderr, 
-					"%s\n%s\n", 
-					"Error: debe ingresar 2 argumentos", 
-					"Ejemplo: ./bin/kernel_scheduler kernel_scheduler.config padre");
-		return EXIT_FAILURE;
-	}
-	else
-	{
-		FILE * pf;	
-		if ( (pf = fopen (argv[RUTA_CONFIGURACION] , "r")) == NULL)
-		{
-			fprintf (	stderr, 
-						"%s\n", 
-						"Error: Ruta archivo de configuracion no se pudo abrir");
-			return EXIT_FAILURE;
-		}		
-		fclose (pf);
-	}
+	validar_cla (argc, argv);
 	
 	/*Se crean la listas de recursos*/
 	recursos_io = list_create();
@@ -91,7 +85,7 @@ int main(int argc, char* argv[])
 	cola_exec = list_create();
 	cola_block = list_create();
 	
-
+	/*Se inicializan los mutex de las colas*/
 	pthread_mutex_init (&mutex_new, NULL);
 	pthread_mutex_init (&mutex_ready, NULL);
 	pthread_mutex_init (&mutex_exec, NULL);
@@ -99,95 +93,84 @@ int main(int argc, char* argv[])
 	pthread_mutex_init (&mutex_io, NULL);
 	pthread_mutex_init (&mutex_cpu, NULL);
 	pthread_mutex_init (&mutex_pid, NULL);
+	pthread_mutex_init(&mutex_quantum, NULL);	
 		
-	sem_init (	&sem_ready, 
-				0/*semaforo compartido entre hilos de este modulo*/, 
-				0/*valor inicial del semaforo*/	);
-	sem_init (	&sem_new, 
-				0/*semaforo compartido entre hilos de este modulo*/, 
-				0/*valor inicial del semaforo*/	);
-	sem_init (	&sem_new_ready, 
-				0/*semaforo compartido entre hilos de este modulo*/, 
-				0/*valor inicial del semaforo*/	);
-	pthread_mutex_init(&mutex_quantum, NULL);
-	
-	recurso_kernel_memory = (int *) malloc (sizeof(int));
+	sem_init (	&sem_ready, 0/*semaforo compartido entre hilos de este modulo*/, 0/*valor inicial del semaforo*/);
+	sem_init (	&sem_new, 0/*semaforo compartido entre hilos de este modulo*/, 0/*valor inicial del semaforo*/);
+	sem_init (	&sem_new_ready, 0/*semaforo compartido entre hilos de este modulo*/, 0/*valor inicial del semaforo*/);
 	
 	/*Obtiene la informacion del archivo de configuracion*/    
 	config = iniciar_config (argv[RUTA_CONFIGURACION]);
 	
-	/*carga la informacion de config en variables*/
-	log_level = config_get_string_value (config, "LOG_LEVEL");
-	algoritmo_de_planificacion = config_get_string_value(config, "PLANIFICATION_ALGORITHM");
-	rr_quantum = config_get_int_value(config, "RR_QUANTUM");
-	/*	QUEUES_ALGORITHMS=[FIFO,RR,RR,FIFO,RR,FIFO] en caso de ser CMN
-		QUEUE_PREEMPTION=TRUE en caso de ser CMN
-		SUSPENSION_TIMEOUT=35000 en caso de ser CMN	*/
-	puerto_escucha = config_get_string_value (config, "PUERTO_ESCUCHA");
-	ip_kernel_memory = config_get_string_value (config, "IP_KERNEL_MEMORY");
-	puerto_kernel_memory = config_get_string_value (config, "PUERTO_KERNEL_MEMORY");
-	
+	obtener_config ();
+
 	/*	Crea el log en el nivel indicado en el archivo de configuracion*/
 	logger = iniciar_log (	"kernel_scheduler.log", "KERNEL_SCHEDULER", log_level_from_string ( log_level ) );
 	
 	/********************** LOG 15 ADICIONAL **********************/
-	log_info ( logger, "## El modulo kernel scheduler ha iniciado");
+	log_info ( logger, "## Inicio: Modulo kernel Scheduler");
 	
 	/*	scheduler es un puntero a funcion que dependiendo el algoritmo de planificacion definido en el archivo de configuracion
-	asigna una funcion a este puntero a funcion, que posteriormente es ejecutado en su respectivo hilo.	*/
-	if (!strcmp (algoritmo_de_planificacion, "FIFO") )
-		short_term_scheduler = fifo;
-	else if (!strcmp (algoritmo_de_planificacion, "RR"))
-		short_term_scheduler = round_robin;
-	else if (!strcmp (algoritmo_de_planificacion, "CMN"))
-		short_term_scheduler =colas_multinivel;
-	else
-	{
-		fprintf (stderr, "%s\n", "Error: Algoritmo de planificación no definido");
-		return EXIT_FAILURE;
-	}
-	/********************** LOG 16 ADICIONAL **********************/
-	log_info (logger, "##Algoritmo de planificacion: %s\n", algoritmo_de_planificacion);
+	asigna a una funcion este puntero a funcion, que posteriormente es ejecutado en su respectivo hilo.	*/
+	establecer_planificador_corto_plazo (algoritmo_de_planificacion);
 	
-	/* Saludo a Kernel Memory */	
-  	*recurso_kernel_memory = crear_socket ( CLIENTE, ip_kernel_memory, puerto_kernel_memory);
-  	conectar_a_servidor ( *recurso_kernel_memory, ip_kernel_memory, puerto_kernel_memory);
+	
+	/* Solicita a Kernel Memory que cree la imagen del proceso principal*/	
+	socket_kernel_memory = (int *) malloc (sizeof(int));
+  	*socket_kernel_memory = crear_socket ( CLIENTE, ip_kernel_memory, puerto_kernel_memory);
+  	conectar_a_servidor ( *socket_kernel_memory, ip_kernel_memory, puerto_kernel_memory);
+  	
   	t_paquete * paquete = crear_paquete (NEW_KERNEL_SCHEDULER);
-	enviar_paquete (paquete, *recurso_kernel_memory);
+  	char * str_pid;
+  	pthread_mutex_lock(&mutex_pid);
+  		str_pid = uint32_to_string (pid++);
+  	pthread_mutex_unlock(&mutex_pid);
+  	agregar_a_paquete (paquete, str_pid, strlen(str_pid) + 1);
+  	printf ("Se enviara: %s\n", argv[ARCHIVO_PSEUDOCODIGO]);
+  	agregar_a_paquete (paquete, argv[ARCHIVO_PSEUDOCODIGO], strlen(argv[ARCHIVO_PSEUDOCODIGO]) + 1);
+	enviar_paquete (paquete, *socket_kernel_memory);
+  	free (str_pid);
+  	int respuesta_km = recibir_operacion(*socket_kernel_memory);
+  	t_list * parametro_respuesta = NULL;
+  	parametro_respuesta = recibir_carga_util (*socket_kernel_memory);
+  	printf ("Respuesta del kernel memory: %s\n", (char *) list_get (parametro_respuesta, 0));
+  	printf ("Operacion respuesta: %d\n", respuesta_km);
   	
   	/*Crea el PCB del proceso inicial*/
 	
 	// Cargar pseudocódigo del archivo
-	char archivo_pseudocodigo[256];
+	/*char archivo_pseudocodigo[256];
 	sprintf(archivo_pseudocodigo, "./pseudocodigos/%s", argv[ARCHIVO_PSEUDOCODIGO]);
 	instrucciones_padre = parsear_instrucciones(archivo_pseudocodigo);
 	log_info(logger, "## Se cargaron %d instrucciones del archivo %s", list_size(instrucciones_padre), argv[ARCHIVO_PSEUDOCODIGO]);
+	*/
 	
 	// Enviar instrucciones a kernel_memory
-	t_paquete * paq_instrucciones = crear_paquete(EXECUTE_PROCESS);
+	/*t_paquete * paq_instrucciones = crear_paquete(EXECUTE_PROCESS);
 	agregar_a_paquete(paq_instrucciones, argv[ARCHIVO_PSEUDOCODIGO], strlen(argv[ARCHIVO_PSEUDOCODIGO]) + 1);
 	for (int i = 0; i < list_size(instrucciones_padre); i++) {
 		char* instr = (char*) list_get(instrucciones_padre, i);
 		agregar_a_paquete(paq_instrucciones, instr, strlen(instr) + 1);
 	}
 	enviar_paquete(paq_instrucciones, *recurso_kernel_memory);
-	destruir_paquete(paq_instrucciones);
+	destruir_paquete(paq_instrucciones);*/
 	
 	pthread_mutex_lock(&mutex_pid);
-  		pid_padre = pid++;
+  		pid_proceso_principal = pid++;
   	pthread_mutex_unlock(&mutex_pid);
+  	
+  	//Aca debe conectarse a kernel memory y solicitar que cree la imagen del procesos
+  	//Cuando le confirme que se creo, se debe crear pcb y encolar en new
+  	
   	t_pcb * nuevo_pcb = NULL;
-  	nuevo_pcb = crear_pcb (pid_padre, 0/*prioridad*/);
+  	nuevo_pcb = crear_pcb (pid_proceso_principal, 0/*prioridad*/);
   	pthread_mutex_lock(&mutex_new);
   		list_add (cola_new, nuevo_pcb);
   	pthread_mutex_unlock(&mutex_new);
   	/********************** LOG 03 Obligatorio **********************/
   	log_info (logger, "## (%u) Se crea el proceso - Estado: NEW", nuevo_pcb->pid);
   	
-  	signal (&sem_new);//Habilita al planificador de largo plazo a transicionar de new a ready
-  	
-  	
-  	
+  	signal (&sem_new);//Habilita al planificador de largo plazo a transicionar el pcb de new a ready
   	
   	/*Inicia servidor multihilos para admitir IO y CPU*/
   	*socket_escucha = crear_socket ( SERVIDOR, NULL, puerto_escucha);
@@ -205,8 +188,65 @@ int main(int argc, char* argv[])
 	
 	if (nuevo_pcb != NULL)
 		free (nuevo_pcb);
-						
-	return 0;
+		
+	log_info (logger, "##Queue_preemption: %d\n", queue_preemption);
+	log_info (logger, "##Algoritmo de planificacion: %s\n", algoritmo_de_planificacion);
+	log_info (logger, "##Suspensio timeout: %ld\n", suspension_timeout);			
+	
+	return EXIT_SUCCESS;
+}
+
+void validar_cla (int argc, char * argv[])
+{
+	/*Validar Argumentos en la Linea de Comandos*/
+	if (argc != 1/*Por el ejecutable*/ + 1/*Por archivo de configuracion*/+ 1/*Por archivo de pseudocodigos*/)
+	{
+		fprintf (	stderr, 
+					"%s\n%s\n", 
+					"Error: debe ingresar 2 argumentos junto al ejecutable", 
+					"Ejemplo: ./bin/kernel_scheduler kernel_scheduler.config padre");
+		exit (EXIT_FAILURE);
+	}
+	else
+	{
+		FILE * pf;	
+		if ( (pf = fopen (argv[RUTA_CONFIGURACION] , "r")) == NULL)
+		{
+			fprintf (	stderr, 
+						"%s\n", 
+						"Error: Ruta archivo de configuracion no se pudo abrir");
+			exit (EXIT_FAILURE);
+		}		
+		fclose (pf);
+	}
+	
+	return;
 }
 
 
+void obtener_config (void)
+{
+	log_level = config_get_string_value ( config, "LOG_LEVEL");
+	algoritmo_de_planificacion = config_get_string_value( config, "PLANIFICATION_ALGORITHM");
+	algoritmos_de_las_colas = 	config_get_array_value (config, "QUEUES_ALGORITHMS");
+	rr_quantum = config_get_int_value ( config, "RR_QUANTUM");
+	queue_preemption = (strcmp (config_get_string_value (config, "QUEUE_PREEMPTION"),"TRUE") == 0) ? true : false;
+	suspension_timeout = config_get_long_value (config, "SUSPENSION_TIMEOUT");
+	puerto_escucha = config_get_string_value (config, "PUERTO_ESCUCHA");
+	ip_kernel_memory = config_get_string_value (config, "IP_KERNEL_MEMORY");
+	puerto_kernel_memory = config_get_string_value (config, "PUERTO_KERNEL_MEMORY");
+
+	return;
+}
+
+void establecer_planificador_corto_plazo (char * algoritmo)
+{
+	if (!strcmp (algoritmo, "FIFO") )
+		short_term_scheduler = fifo;
+	else if (!strcmp (algoritmo, "RR"))
+		short_term_scheduler = round_robin;
+	else if (!strcmp (algoritmo, "CMN"))
+		short_term_scheduler =colas_multinivel;
+
+	return;
+}
