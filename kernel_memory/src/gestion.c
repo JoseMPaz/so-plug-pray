@@ -62,16 +62,18 @@ void * admitir (void * socket_de_atencion)
 				*socket_kernel_scheduler = socket;
 				log_info ( logger, "## Nueva conexion: kernel Scheduler");
 				parametros_new_kernel_scheduler = recibir_carga_util (socket);
-				char * str_pid = (char *) list_get (parametros_new_kernel_scheduler, 0);
-				list_destroy (parametros_new_kernel_scheduler);
+				char * str_pid = strdup ( (char *) list_get (parametros_new_kernel_scheduler, 0) );
+				
 				printf ("Cantidad de argumentos: %d\n", list_size (parametros_new_kernel_scheduler));
 				printf ("Kernel scheduler envio pid: %s\n", str_pid);
-				/*strcpy (ruta_absoluta_intrucciones, scripts_basepath);
-				strcat (ruta_absoluta_intrucciones, "/");
-				strcat (ruta_absoluta_intrucciones, (char *) list_get (parametros_new_kernel_scheduler, 1));*/
-				//printf ("%s\n", (char *) list_get (parametros_new_kernel_scheduler, 1));
+				strcpy (ruta_absoluta_instrucciones, scripts_basepath);
+				strcat (ruta_absoluta_instrucciones, "/");
+				strcat (ruta_absoluta_instrucciones, (char *) list_get (parametros_new_kernel_scheduler, 1));
+				printf ("ruta absoluta: %s\n", ruta_absoluta_instrucciones);
 				//Creo la imagen a ese pid
 				//Aviso que fue creado y cierro el socket
+				
+				list_destroy_and_destroy_elements (parametros_new_kernel_scheduler, free);
 				t_paquete * paquete = crear_paquete (RESPUESTA_IMAGEN_PROCESO);
 				agregar_a_paquete (paquete, "OK", strlen ("OK") + 1);
 				enviar_paquete (paquete, socket);
