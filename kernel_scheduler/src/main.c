@@ -45,6 +45,7 @@ pthread_mutex_t mutex_quantum;
 sem_t sem_ready;
 sem_t sem_new;
 sem_t sem_new_ready;
+
 int * socket_kernel_memory = NULL;
 
 
@@ -69,7 +70,6 @@ int main(int argc, char* argv[])
 {
 	int * socket_escucha = (int *) malloc (sizeof(int));
 	pthread_t hilo_servidor;
-
 	int pid_proceso_principal;
 	pthread_t hilo_planificador_corto_plazo;
 	pthread_t hilo_planificador_largo_plazo;
@@ -119,17 +119,18 @@ int main(int argc, char* argv[])
 	socket_kernel_memory = (int *) malloc (sizeof(int));
   	*socket_kernel_memory = crear_socket ( CLIENTE, ip_kernel_memory, puerto_kernel_memory);
   	conectar_a_servidor ( *socket_kernel_memory, ip_kernel_memory, puerto_kernel_memory);
-  	
   	t_paquete * paquete = crear_paquete (NEW_KERNEL_SCHEDULER);
   	char * str_pid;
   	pthread_mutex_lock(&mutex_pid);
-  		str_pid = uint32_to_string (pid++);
+  		str_pid = uint32_to_string (pid);
   	pthread_mutex_unlock(&mutex_pid);
   	agregar_a_paquete (paquete, str_pid, strlen(str_pid) + 1);
   	printf ("Se enviara: %s\n", argv[ARCHIVO_PSEUDOCODIGO]);
   	agregar_a_paquete (paquete, argv[ARCHIVO_PSEUDOCODIGO], strlen(argv[ARCHIVO_PSEUDOCODIGO]) + 1);
 	enviar_paquete (paquete, *socket_kernel_memory);
   	free (str_pid);
+  	
+  	/*Esperar respuesta del kernel memory*/
   	int respuesta_km = recibir_operacion(*socket_kernel_memory);
   	t_list * parametro_respuesta = NULL;
   	parametro_respuesta = recibir_carga_util (*socket_kernel_memory);
@@ -155,9 +156,8 @@ int main(int argc, char* argv[])
 	enviar_paquete(paq_instrucciones, *recurso_kernel_memory);
 	destruir_paquete(paq_instrucciones);*/
 	
-	pthread_mutex_lock(&mutex_pid);
-  		pid_proceso_principal = pid++;
-  	pthread_mutex_unlock(&mutex_pid);
+	
+  	
   	
   	//Aca debe conectarse a kernel memory y solicitar que cree la imagen del procesos
   	//Cuando le confirme que se creo, se debe crear pcb y encolar en new
@@ -169,6 +169,10 @@ int main(int argc, char* argv[])
   	pthread_mutex_unlock(&mutex_new);
   	/********************** LOG 03 Obligatorio **********************/
   	log_info (logger, "## (%u) Se crea el proceso - Estado: NEW", nuevo_pcb->pid);
+  	
+  	pthread_mutex_lock(&mutex_pid);
+  		pid_proceso_principal = pid++;
+  	pthread_mutex_unlock(&mutex_pid);
   	
   	signal (&sem_new);//Habilita al planificador de largo plazo a transicionar el pcb de new a ready
   	
@@ -184,6 +188,7 @@ int main(int argc, char* argv[])
 	
 	
 	pthread_join (hilo_servidor, NULL);
+	pthread_join (hilo_planificador_largo_plazo, NULL);
 	pthread_join (hilo_planificador_corto_plazo, NULL);
 	
 	if (nuevo_pcb != NULL)

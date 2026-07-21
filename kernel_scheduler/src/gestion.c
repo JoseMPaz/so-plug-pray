@@ -235,7 +235,7 @@ void * fifo (void * arg)
 
 		t_recurso * cpu_libre = buscar_cpu_libre ();
 
-		if (cpu_libre != NULL)
+		if (cpu_libre != NULL)//Cuando hay CPU libre
 		{
 			printf ("ID Recurso cpu libre: %s\n", cpu_libre->id);
 			
@@ -436,12 +436,12 @@ t_recurso * buscar_cpu_libre(void)
 {
 	pthread_mutex_lock(&mutex_cpu);
 
-	t_recurso * cpu_libre = list_find(
-		recursos_cpu,
-		esta_disponible
-	);
+	/*list_find: Retorna el primer valor encontrado, el cual haga que condition devuelva true, 
+	o NULL en caso de no encontrar ninguno. */
+	t_recurso * cpu_libre = list_find ( recursos_cpu, esta_disponible );
+	
 
-	if(cpu_libre != NULL)
+	if(cpu_libre != NULL) 
 	{
 		cpu_libre->disponible = false;
 	}

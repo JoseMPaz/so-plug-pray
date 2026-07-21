@@ -8,26 +8,26 @@ void * admitir_clientes (void * socket_escucha)
 	
 	while(true)
 	{
-   	pthread_t hilo_de_atencion; //Por cada solicitud de atencion genera un hilo nuevo  	
+   		pthread_t hilo_de_atencion; //Por cada solicitud de atencion genera un hilo nuevo  	
     	
-   	socket_temporal = accept (socket, NULL, NULL);//Se queda aca esperando peticiones, ya que accept es bloqueante
+   		socket_temporal = accept (socket, NULL, NULL);//Se queda aca esperando peticiones, ya que accept es bloqueante
     	
-   	if (socket_temporal >= 0)
-   	{
-   		//La funcion dentro del hilo_de_atencion debe liberar esta peticion de memoria
-   		int * socket_de_atencion = (int *) malloc (sizeof(int)); 
+   		if (socket_temporal >= 0)
+   		{
+   			//La funcion dentro del hilo_de_atencion debe liberar esta peticion de memoria
+   			int * socket_de_atencion = (int *) malloc (sizeof(int)); 
     		
-   		*socket_de_atencion = socket_temporal;
+   			*socket_de_atencion = socket_temporal;
     		
-   		pthread_create (&hilo_de_atencion, NULL, admitir, (void *) socket_de_atencion);
-   		pthread_detach (hilo_de_atencion);
-   	}   	
-  }
-  pthread_exit(NULL);
+   			pthread_create (&hilo_de_atencion, NULL, admitir, (void *) socket_de_atencion);
+   			pthread_detach (hilo_de_atencion);
+   		}   	
+  	}
+  	pthread_exit(NULL);
 
 	return NULL;
-
 }
+
 
 void * admitir (void * socket_de_atencion)
 {
@@ -40,11 +40,10 @@ void * admitir (void * socket_de_atencion)
 	t_list * parametros_new_cpu = NULL;
 	char ruta_absoluta_instrucciones[150];
 
-	int operacion = recibir_operacion (socket);
+	int operacion = recibir_operacion(socket);
 
-    
 	switch (operacion) //Selecciona el tipo de operacion
-  {
+	{
 		case NEW_SWAP: //Se encolar el socket io en la lista de ios
 			if (recurso_swap == NULL)
 			{
@@ -58,25 +57,39 @@ void * admitir (void * socket_de_atencion)
 				close (socket);
 			}
 			break;
-		case NEW_KERNEL_SCHEDULER: //Se debe obtener como operando el PID del proceso padre
-				*socket_kernel_scheduler = socket;
-				log_info ( logger, "## Nueva conexion: kernel Scheduler");
-				parametros_new_kernel_scheduler = recibir_carga_util (socket);
-				char * str_pid = strdup ( (char *) list_get (parametros_new_kernel_scheduler, 0) );
+		case NEW_KERNEL_SCHEDULER: //Se encolar el socket io en la lista de ios
+			*socket_kernel_scheduler = socket;
+			log_info ( logger, "## Nueva conexion: kernel Scheduler");
+			parametros_new_kernel_scheduler = recibir_carga_util (socket);
+			char * str_pid = strdup ( (char *) list_get (parametros_new_kernel_scheduler, 0) );
 				
-				printf ("Cantidad de argumentos: %d\n", list_size (parametros_new_kernel_scheduler));
-				printf ("Kernel scheduler envio pid: %s\n", str_pid);
-				strcpy (ruta_absoluta_instrucciones, scripts_basepath);
-				strcat (ruta_absoluta_instrucciones, "/");
-				strcat (ruta_absoluta_instrucciones, (char *) list_get (parametros_new_kernel_scheduler, 1));
-				printf ("ruta absoluta: %s\n", ruta_absoluta_instrucciones);
-				//Creo la imagen a ese pid
-				//Aviso que fue creado y cierro el socket
+			printf ("Cantidad de argumentos: %d\n", list_size (parametros_new_kernel_scheduler));
+			printf ("Kernel scheduler envio pid: %s\n", str_pid);
+			strcpy (ruta_absoluta_instrucciones, scripts_basepath);
+			strcat (ruta_absoluta_instrucciones, "/");
+			strcat (ruta_absoluta_instrucciones, (char *) list_get (parametros_new_kernel_scheduler, 1));
+			printf ("ruta absoluta: %s\n", ruta_absoluta_instrucciones);
 				
-				list_destroy_and_destroy_elements (parametros_new_kernel_scheduler, free);
-				t_paquete * paquete = crear_paquete (RESPUESTA_IMAGEN_PROCESO);
-				agregar_a_paquete (paquete, "OK", strlen ("OK") + 1);
-				enviar_paquete (paquete, socket);
+			t_codigo * codigo = (t_codigo *) malloc (sizeof (t_codigo));
+			codigo->str_pid = str_pid;
+			codigo->instrucciones = leer_archivo_a_lista (ruta_absoluta_instrucciones);
+			list_add (codigos, codigo);
+				
+			printf("PID: %s\n", codigo->str_pid);
+				
+			t_codigo * un_codigo = (t_codigo *) list_get (codigos, 0);
+
+			for (int i = 0; i < list_size(un_codigo->instrucciones); i++)
+				printf("Instruccion: %s\n", (char *) list_get(un_codigo->instrucciones, i));
+    			
+				
+			//Creo la imagen a ese pid
+			//Aviso que fue creado y cierro el socket
+				
+			list_destroy_and_destroy_elements (parametros_new_kernel_scheduler, free);
+			t_paquete * paquete = crear_paquete (RESPUESTA_IMAGEN_PROCESO);
+			agregar_a_paquete (paquete, "OK", strlen ("OK") + 1);
+			enviar_paquete (paquete, socket);
 				//atender_kernel_scheduler (*socket_kernel_scheduler);
 				
 			break;
@@ -131,8 +144,7 @@ void * admitir (void * socket_de_atencion)
 	return NULL;
 }
 
-t_list* parsear_instrucciones(char* path_archivo)
-{
+t_list* parsear_instrucciones(char* path_archivo){
 	t_list* lista_instrucciones = list_create();
 
 	FILE* archivo = fopen(path_archivo,"r");
@@ -164,8 +176,8 @@ void atender_kernel_scheduler (int socket)
 	t_paquete * paquete_memoria = NULL;
 
 	while(true) //loop infinito para que se quede escuchando mensajes del cpu
-	{
-		operacion = recibir_operacion(socket); //recien se iguala operacion aca porque cpu puede mandar muchas operaciones, y si estaria afuera, procesaria siempre la misma
+		{
+			operacion = recibir_operacion(socket); //recien se iguala operacion aca porque cpu puede mandar muchas operaciones, y si estaria afuera, procesaria siempre la misma
 			switch(operacion)
 			{
 				case EXECUTE_PROCESS: { // Recibir instrucciones del proceso
@@ -266,3 +278,84 @@ void atender_cpu (int socket) //Devolver instrucciones y simular memoria
 }
 
 
+void crear_tabla_segmentos_proceso(uint32_t pid) {
+    pthread_mutex_lock(&mutex_tablas_segmentos);
+
+    t_tabla_segmentos* nueva_tabla = malloc(sizeof(t_tabla_segmentos));
+    nueva_tabla->pid = pid;
+    nueva_tabla->segmentos = list_create();
+
+	list_add(tablas_segmentos_procesos, nueva_tabla);
+    
+    log_info(logger, "## Tabla de segmentos creada para el PID: %u", pid);
+
+    pthread_mutex_unlock(&mutex_tablas_segmentos);
+}
+
+static uint32_t _pid_buscado;
+static bool _comparar_pid(void* elemento) {
+    t_tabla_segmentos* tabla = (t_tabla_segmentos*) elemento;
+    return tabla->pid == _pid_buscado;
+}
+
+t_tabla_segmentos* buscar_tabla_segmentos(uint32_t pid) {
+    pthread_mutex_lock(&mutex_tablas_segmentos);
+    
+    _pid_buscado = pid;
+    t_tabla_segmentos* tabla = list_find(tablas_segmentos_procesos, _comparar_pid);
+    
+    pthread_mutex_unlock(&mutex_tablas_segmentos);
+    return tabla;
+}
+
+static uint32_t _seg_id_buscado;
+static bool _comparar_segmento_id(void* elemento) {
+    t_segmento* seg = (t_segmento*) elemento;
+    return seg->id_segmento == _seg_id_buscado;
+}
+
+t_segmento* buscar_segmento_en_proceso(t_tabla_segmentos* tabla, uint32_t id_segmento) {
+    if (tabla == NULL) return NULL;
+    
+    _seg_id_buscado = id_segmento;
+    return list_find(tabla->segmentos, _comparar_segmento_id);
+}
+
+void registrar_nuevo_segmento(uint32_t pid, uint32_t id_segmento, uint32_t base_fisica, uint32_t limite) {
+    t_tabla_segmentos* tabla = buscar_tabla_segmentos(pid);
+    if (tabla == NULL) {
+        log_error(logger, "Error: No se encontró la tabla de segmentos para PID %u", pid);
+        return;
+    }
+
+t_segmento* nuevo_segmento = malloc(sizeof(t_segmento));
+    nuevo_segmento->id_segmento = id_segmento;
+    nuevo_segmento->direccion_base = base_fisica;
+    nuevo_segmento->limite = limite;
+
+	pthread_mutex_lock(&mutex_tablas_segmentos);
+    list_add(tabla->segmentos, nuevo_segmento);
+    pthread_mutex_unlock(&mutex_tablas_segmentos);
+
+log_info(logger, "## Creación de Segmento: PID: %u - Crear Segmento: %u - Tamaño: %u", 
+             pid, id_segmento, limite);
+}
+
+void eliminar_segmento_de_proceso(uint32_t pid, uint32_t id_segmento) {
+    t_tabla_segmentos* tabla = buscar_tabla_segmentos(pid);
+    if (tabla == NULL) return;
+
+    pthread_mutex_lock(&mutex_tablas_segmentos);
+    
+    _seg_id_buscado = id_segmento;
+    t_segmento* seg_a_borrar = list_remove_by_condition(tabla->segmentos, _comparar_segmento_id);
+    
+    pthread_mutex_unlock(&mutex_tablas_segmentos);
+
+    if (seg_a_borrar != NULL) {
+        log_info(logger, "## PID: %u - Eliminación de Segmento ID: %u - Base Física: %u", 
+                 pid, id_segmento, seg_a_borrar->direccion_base);
+				
+				 free(seg_a_borrar); 
+    }
+}

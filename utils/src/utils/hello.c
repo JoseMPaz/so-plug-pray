@@ -249,3 +249,31 @@ char *uint32_to_string (uint32_t numero)
 
     return cadena;
 }
+
+t_list * leer_archivo_a_lista (const char *ruta)
+{
+    FILE *archivo = fopen(ruta, "r");
+
+    if (archivo == NULL)
+        return NULL;
+
+    t_list * lista = list_create();
+
+    char *linea = NULL;
+    size_t longitud = 0;
+    ssize_t leidos;
+
+    while ((leidos = getline(&linea, &longitud, archivo)) != -1)
+    {
+        // Eliminar el '\n' si existe
+        if (leidos > 0 && linea[leidos - 1] == '\n')
+            linea[leidos - 1] = '\0';
+
+        list_add(lista, strdup(linea));
+    }
+
+    free(linea);
+    fclose(archivo);
+
+    return lista;
+}

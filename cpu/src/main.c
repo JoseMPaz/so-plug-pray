@@ -19,14 +19,13 @@ char * puerto_memory_stick;
 
 int main(int argc, char * argv[]) 
 {
-    // Validación de argumentos según enunciado (Pág. 19)
     if (argc < 3) {
         printf("Error: Faltan argumentos. Uso correcto: %s [Ruta Config] [Identificador]\n", argv[0]);
         return EXIT_FAILURE;
     }
 
     char* ruta_config = argv[1];
-    char* id_cpu = argv[2]; // Capturamos el identificador dinámico
+    char* id_cpu = argv[2];
 
     config = iniciar_config (ruta_config);
     
@@ -38,13 +37,17 @@ int main(int argc, char * argv[])
     ip_memory_stick = config_get_string_value (config, "IP_MEMORY_STICK");
     puerto_memory_stick = config_get_string_value (config, "PUERTO_MEMORY_STICK");
     
-    // El nombre del archivo log ahora incluye el identificador de la CPU (Pág. 19)
     char nombre_log[50];
     sprintf(nombre_log, "cpu_%s.log", id_cpu);
 
     logger = iniciar_log ( nombre_log, "CPU", log_level_from_string ( log_level ) );
     log_info ( logger, "MODULO CPU %s HA INICIADO", id_cpu);
     
+    // Inicialización de la lista de Sticks para la CPU
+    if (lista_sticks_cpu == NULL) {
+        lista_sticks_cpu = list_create();
+    }
+
     socket_kernel_scheduler = crear_socket ( CLIENTE, ip_kernel_scheduler, puerto_kernek_scheduler);
     socket_kernel_memory = crear_socket ( CLIENTE, ip_kernel_memory, puerto_kernek_memory);
     socket_memory_stick = crear_socket ( CLIENTE, ip_memory_stick, puerto_memory_stick);
@@ -64,6 +67,14 @@ int main(int argc, char * argv[])
     t_paquete * paquete_memory_stick = crear_paquete (NEW_CPU);
     agregar_a_paquete (paquete_memory_stick, id_cpu, strlen(id_cpu) + 1);
     enviar_paquete (paquete_memory_stick, socket_memory_stick);
+
+    // Registro del Memory Stick inicial en la lista de la CPU
+    t_stick_ref* stick_inicial = (t_stick_ref*) malloc(sizeof(t_stick_ref));
+    stick_inicial->id = 1;
+    stick_inicial->socket = socket_memory_stick;
+    stick_inicial->tamano = 256;      // Tamaño base estándar por segmento/stick
+    stick_inicial->base_fisica = 0;   // Inicia en la dirección física 0
+    list_add(lista_sticks_cpu, stick_inicial);
     
     log_info(logger, "CPU %s lista y esperando procesos del Kernel...\n", id_cpu);
 

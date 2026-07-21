@@ -122,6 +122,12 @@ typedef struct
 	t_operacion operacion;
 	t_carga_util * carga_util;
 }t_paquete;
+
+typedef struct
+{
+	char * str_pid;
+	t_list * instrucciones;
+}t_codigo;
 /**
 * @brief Imprime un saludo por consola
 * @param quien Módulo desde donde se llama a la función
@@ -142,5 +148,6 @@ void enviar_paquete (t_paquete * paquete, int socket);
 void * serializar_paquete (t_paquete * paquete, int bytes_a_enviar);
 char * pasar_a_minusculas (char* str);
 char * uint32_to_string (uint32_t numero);
+t_list * leer_archivo_a_lista (const char *ruta);
 
 #endif
