@@ -2,17 +2,14 @@
 Ejecucion del modulo con Argumentos en la Linea de Comandos
 	./bin/kernel_scheduler <ruta archivo configuracion> <nombre archivo pseudocodigo inicial>
 Ejemplo:
-	./bin/kernel_scheduler kernel_scheduler.config padre.prc
-	argv[0] = "./bin/kernel_scheduler"
-	argv[1] = "kernel_scheduler.config"
-	argv[2] = "padre.prc"
+	./bin/kernel_scheduler kernel_scheduler.config padre
 */
 
 /* Cantidad de LOG Obligatorios = 2*/
 /* Cantidad de LOG Adicionales = 2*/
 
 #include "gestion.h"
-#define RUTA_CONFIGURACION 1
+#define RUTA_CONFIGURACION 0
 #define ARCHIVO_PSEUDOCODIGO 2
 
 t_config * config = NULL;
@@ -39,7 +36,6 @@ uint32_t pid = 0;
 t_list * instrucciones_padre = NULL;
 
 // Variables para Round Robin
-
 pthread_mutex_t mutex_quantum;
 
 sem_t sem_ready;
@@ -47,7 +43,6 @@ sem_t sem_new;
 sem_t sem_new_ready;
 
 int * socket_kernel_memory = NULL;
-
 
 /*Variables de config*/
 char * log_level;
@@ -66,11 +61,12 @@ void validar_cla (int argc, char * argv[]);
 void obtener_config (void);
 void establecer_planificador_corto_plazo (char * algoritmo);
 
+
 int main(int argc, char* argv[]) 
 {
 	int * socket_escucha = (int *) malloc (sizeof(int));
 	pthread_t hilo_servidor;
-	int pid_proceso_principal;
+	int pid_proceso_principal;	
 	pthread_t hilo_planificador_corto_plazo;
 	pthread_t hilo_planificador_largo_plazo;
 	
@@ -85,6 +81,7 @@ int main(int argc, char* argv[])
 	cola_exec = list_create();
 	cola_block = list_create();
 	
+
 	/*Se inicializan los mutex de las colas*/
 	pthread_mutex_init (&mutex_new, NULL);
 	pthread_mutex_init (&mutex_ready, NULL);
@@ -99,11 +96,13 @@ int main(int argc, char* argv[])
 	sem_init (	&sem_new, 0/*semaforo compartido entre hilos de este modulo*/, 0/*valor inicial del semaforo*/);
 	sem_init (	&sem_new_ready, 0/*semaforo compartido entre hilos de este modulo*/, 0/*valor inicial del semaforo*/);
 	
+	socket_kernel_memory = (int *) malloc (sizeof(int));
+	
 	/*Obtiene la informacion del archivo de configuracion*/    
-	config = iniciar_config (argv[RUTA_CONFIGURACION]);
+	config = iniciar_config ("./kernel_scheduler.config");
 	
 	obtener_config ();
-
+		
 	/*	Crea el log en el nivel indicado en el archivo de configuracion*/
 	logger = iniciar_log (	"kernel_scheduler.log", "KERNEL_SCHEDULER", log_level_from_string ( log_level ) );
 	
@@ -113,8 +112,7 @@ int main(int argc, char* argv[])
 	/*	scheduler es un puntero a funcion que dependiendo el algoritmo de planificacion definido en el archivo de configuracion
 	asigna a una funcion este puntero a funcion, que posteriormente es ejecutado en su respectivo hilo.	*/
 	establecer_planificador_corto_plazo (algoritmo_de_planificacion);
-	
-	
+		
 	/* Solicita a Kernel Memory que cree la imagen del proceso principal*/	
 	socket_kernel_memory = (int *) malloc (sizeof(int));
   	*socket_kernel_memory = crear_socket ( CLIENTE, ip_kernel_memory, puerto_kernel_memory);
@@ -137,14 +135,19 @@ int main(int argc, char* argv[])
   	printf ("Respuesta del kernel memory: %s\n", (char *) list_get (parametro_respuesta, 0));
   	printf ("Operacion respuesta: %d\n", respuesta_km);
   	
+  	
+  	
+  	
   	/*Crea el PCB del proceso inicial*/
+  	
+  	
+  	
 	
-	// Cargar pseudocódigo del archivo
+	// Cargar pseudocódigo del archivo->los pseudocodigos estan en kernel_memory
 	/*char archivo_pseudocodigo[256];
 	sprintf(archivo_pseudocodigo, "./pseudocodigos/%s", argv[ARCHIVO_PSEUDOCODIGO]);
 	instrucciones_padre = parsear_instrucciones(archivo_pseudocodigo);
-	log_info(logger, "## Se cargaron %d instrucciones del archivo %s", list_size(instrucciones_padre), argv[ARCHIVO_PSEUDOCODIGO]);
-	*/
+	log_info(logger, "## Se cargaron %d instrucciones del archivo %s", list_size(instrucciones_padre), argv[ARCHIVO_PSEUDOCODIGO]);*/
 	
 	// Enviar instrucciones a kernel_memory
 	/*t_paquete * paq_instrucciones = crear_paquete(EXECUTE_PROCESS);
@@ -156,25 +159,26 @@ int main(int argc, char* argv[])
 	enviar_paquete(paq_instrucciones, *recurso_kernel_memory);
 	destruir_paquete(paq_instrucciones);*/
 	
-	
-  	
-  	
-  	//Aca debe conectarse a kernel memory y solicitar que cree la imagen del procesos
-  	//Cuando le confirme que se creo, se debe crear pcb y encolar en new
-  	
-  	t_pcb * nuevo_pcb = NULL;
+	t_pcb * nuevo_pcb = NULL;
+	pthread_mutex_lock(&mutex_pid);
+  		pid_proceso_principal = pid;
+  	pthread_mutex_unlock(&mutex_pid);
   	nuevo_pcb = crear_pcb (pid_proceso_principal, 0/*prioridad*/);
   	pthread_mutex_lock(&mutex_new);
   		list_add (cola_new, nuevo_pcb);
   	pthread_mutex_unlock(&mutex_new);
+  	
+  	
   	/********************** LOG 03 Obligatorio **********************/
   	log_info (logger, "## (%u) Se crea el proceso - Estado: NEW", nuevo_pcb->pid);
-  	
   	pthread_mutex_lock(&mutex_pid);
-  		pid_proceso_principal = pid++;
+  		pid++;
   	pthread_mutex_unlock(&mutex_pid);
-  	
   	signal (&sem_new);//Habilita al planificador de largo plazo a transicionar el pcb de new a ready
+  	
+  	
+  	
+  	
   	
   	/*Inicia servidor multihilos para admitir IO y CPU*/
   	*socket_escucha = crear_socket ( SERVIDOR, NULL, puerto_escucha);
@@ -196,8 +200,8 @@ int main(int argc, char* argv[])
 		
 	log_info (logger, "##Queue_preemption: %d\n", queue_preemption);
 	log_info (logger, "##Algoritmo de planificacion: %s\n", algoritmo_de_planificacion);
-	log_info (logger, "##Suspensio timeout: %ld\n", suspension_timeout);			
-	
+	log_info (logger, "##Suspensio timeout: %ld\n", suspension_timeout);	
+						
 	return EXIT_SUCCESS;
 }
 

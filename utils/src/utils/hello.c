@@ -230,6 +230,7 @@ char * pasar_a_minusculas(char* str)
 	return minusculas;
 }
 
+
 char *uint32_to_string (uint32_t numero)
 {
     // Obtener la cantidad de caracteres necesarios (sin contar '\0')

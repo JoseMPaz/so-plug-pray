@@ -16,9 +16,6 @@
 #include <semaphore.h>
 #include <arpa/inet.h>
 #include <ctype.h>
-#include <stdint.h>
-
-
 
 
 
@@ -56,14 +53,17 @@ typedef enum
 	ESPACIO_LIBRE = 13,
 	R_ESPACIO = 14,
 
+	LEER_BLOQUE_SWAP = 15,
+	ESCRIBIR_BLOQUE_SWAP = 16,
+	R_LECTURA_SWAP = 17,
+
 	OPERACION_DESCONOCIDA = 50,
 	/* 
 	...
 	Van las operaciones que maneja cada servidor
 	...
 	*/
-	
-	RESPUESTA_IMAGEN_PROCESO=100
+	RESPUESTA_IMAGEN_PROCESO = 100
 }t_operacion;
 
 typedef struct 
@@ -146,7 +146,7 @@ void destruir_paquete (t_paquete * paquete);
 void agregar_a_paquete (t_paquete * paquete, void * cadena, int longitud);
 void enviar_paquete (t_paquete * paquete, int socket);
 void * serializar_paquete (t_paquete * paquete, int bytes_a_enviar);
-char * pasar_a_minusculas (char* str);
+char * pasar_a_minusculas(char* str);
 char * uint32_to_string (uint32_t numero);
 t_list * leer_archivo_a_lista (const char *ruta);
 
